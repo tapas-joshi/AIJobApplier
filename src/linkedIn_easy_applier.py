@@ -308,7 +308,6 @@ class LinkedInEasyApplier:
                 if existing_answer:
                     self._enter_text(text_field, existing_answer['answer'])
                 else:
-                    logger.debug(f"Generating answer via LLM for question: {question_text} since it is not present in answers JSON file")
                     if is_numeric:
                         answer = self.gpt_answerer.answer_question_numeric(question_text)
                     else:

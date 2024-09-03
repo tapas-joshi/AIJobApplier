@@ -12,14 +12,15 @@ class SelfIdentification:
 
 @dataclass
 class LegalAuthorization:
-    eu_work_authorization: str
     us_work_authorization: str
+    us_requires_sponsorship_now_future: str
     requires_us_visa: str
     legally_allowed_to_work_in_us: str
     requires_us_sponsorship: str
     requires_eu_visa: str
     legally_allowed_to_work_in_eu: str
     requires_eu_sponsorship: str
+    eu_work_authorization: str
 
 @dataclass
 class WorkPreferences:

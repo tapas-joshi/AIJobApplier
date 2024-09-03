@@ -1,10 +1,53 @@
 import os
 import random
 import time
-
+import json
+from loguru import logger
 from selenium import webdriver
 
 chromeProfilePath = os.path.join(os.getcwd(), "chrome_profile", "linkedin_profile")
+
+
+def remove_duplicates_from_answers_json_file(file_path):
+    try:
+        # Read the JSON data from the file
+        with open(file_path, 'r') as file:
+            logger.info(f"Reading data from {file_path}")
+            json_data = json.load(file)
+
+        # Create a set to keep track of seen (type, question) pairs
+        seen = set()
+        unique_entries = []
+
+        for entry in json_data:
+            try:
+                # Create a tuple of the type and question
+                identifier = (entry['type'], entry['question'])
+
+                # If this pair hasn't been seen before, add it to the unique list and mark it as seen
+                if identifier not in seen:
+                    seen.add(identifier)
+                    unique_entries.append(entry)
+                else:
+                    logger.debug(f"Duplicate found and skipped: {identifier}")
+
+            except KeyError as e:
+                logger.error(f"Missing expected key in entry: {e}. Entry: {entry}")
+
+        # Write the updated unique entries back to the same file
+        with open(file_path, 'w') as file:
+            logger.info(f"Writing unique entries back to {file_path}")
+            json.dump(unique_entries, file, indent=4)
+
+        logger.info("Duplicate removal process completed successfully.")
+
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {file_path}. Error: {e}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON from file: {file_path}. Error: {e}")
+    except Exception as e:
+        logger.exception(f"An unexpected error occurred: {e}")
+
 
 def ensure_chrome_profile():
     profile_dir = os.path.dirname(chromeProfilePath)
@@ -14,10 +57,12 @@ def ensure_chrome_profile():
         os.makedirs(chromeProfilePath)
     return chromeProfilePath
 
+
 def is_scrollable(element):
     scroll_height = element.get_attribute("scrollHeight")
     client_height = element.get_attribute("clientHeight")
     return int(scroll_height) > int(client_height)
+
 
 def scroll_slow(driver, scrollable_element, start=0, end=3600, step=100, reverse=False):
     if reverse:
@@ -33,7 +78,7 @@ def scroll_slow(driver, scrollable_element, start=0, end=3600, step=100, reverse
                 return
             if (step > 0 and start >= end) or (step < 0 and start <= end):
                 print("No scrolling will occur due to incorrect start/end values.")
-                return        
+                return
             for position in range(start, end, step):
                 try:
                     driver.execute_script(script_scroll_to, scrollable_element, position)
@@ -46,6 +91,7 @@ def scroll_slow(driver, scrollable_element, start=0, end=3600, step=100, reverse
             print("The element is not visible.")
     except Exception as e:
         print(f"Exception occurred: {e}")
+
 
 def chromeBrowserOptions():
     ensure_chrome_profile()
@@ -68,7 +114,8 @@ def chromeBrowserOptions():
     options.add_argument("--disable-plugins")  # Disabilita i plugin del browser
     options.add_argument("--disable-animations")  # Disabilita le animazioni
     options.add_argument("--disable-cache")  # Disabilita la cache 
-    options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])  # Esclude switch della modalità automatica e logging
+    options.add_experimental_option("excludeSwitches", ["enable-automation",
+                                                        "enable-logging"])  # Esclude switch della modalità automatica e logging
 
     # Preferenze per contenuti
     prefs = {
@@ -94,6 +141,7 @@ def printred(text):
     RESET = "\033[0m"
     # Stampa il testo in rosso
     print(f"{RED}{text}{RESET}")
+
 
 def printyellow(text):
     # Codice colore ANSI per il giallo

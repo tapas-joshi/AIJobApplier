@@ -10,10 +10,14 @@ from langchain_core.messages.ai import AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompt_values import StringPromptValue
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_ollama.llms import OllamaLLM
 from langchain_openai import ChatOpenAI
 from Levenshtein import distance
+from loguru import logger
+import app_config
 
 import src.strings as strings
+from app_config import llm_model_name
 
 load_dotenv()
 
@@ -114,9 +118,26 @@ class LoggerChatModel:
 
 class GPTAnswerer:
     def __init__(self, openai_api_key):
-        self.llm_cheap = LoggerChatModel(
-            ChatOpenAI(model_name="gpt-4o-mini", openai_api_key=openai_api_key, temperature=0.4)
-        )
+
+        if llm_model_name.__contains__("openai"):
+            llm_model_name_cleaned = app_config.llm_model_name.replace("openai/", "")
+            self.llm_model = LoggerChatModel(
+                ChatOpenAI(model_name=llm_model_name_cleaned, openai_api_key=openai_api_key, temperature=0.4)
+            )
+        elif llm_model_name.__contains__("ollama"):
+            llm_model_name_cleaned = app_config.llm_model_name.replace("ollama/", "")
+            self.llm_model = OllamaLLM(model = llm_model_name_cleaned)
+
+        try:
+            with open(app_config.additional_info_file_path, 'r') as file:
+                self.additional_info_data = json.load(file)
+        except FileNotFoundError:
+            logger.error(f"Additional info file not found at {app_config.additional_info_file_path}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Error reading additional info file {app_config.additional_info_file_path}: {e}")
+            # raise JSONDecodeError(f"Error reading additional info file {app_config.additional_info_file_path}: {e}")
+
+
     @property
     def job_description(self):
         return self.job.description
@@ -154,13 +175,13 @@ class GPTAnswerer:
             strings.summarize_prompt_template
         )
         prompt = ChatPromptTemplate.from_template(strings.summarize_prompt_template)
-        chain = prompt | self.llm_cheap | StrOutputParser()
+        chain = prompt | self.llm_model | StrOutputParser()
         output = chain.invoke({"text": text})
         return output
             
     def _create_chain(self, template: str):
         prompt = ChatPromptTemplate.from_template(template)
-        return prompt | self.llm_cheap | StrOutputParser()
+        return prompt | self.llm_model | StrOutputParser()
     
     def answer_question_textual_wide_range(self, question: str) -> str:
         # Define chains for each section of the resume
@@ -180,7 +201,8 @@ class GPTAnswerer:
             "cover_letter": self._create_chain(strings.coverletter_template),
         }
         section_prompt = """
-        You are assisting a bot designed to automatically apply for jobs on LinkedIn. The bot receives various questions about job applications and needs to determine the most relevant section of the resume to provide an accurate response.
+        You are assisting a bot designed to automatically apply for jobs on LinkedIn. The bot receives various questions 
+        about job applications and needs to determine the most relevant section of the resume to provide an accurate response.
 
         For the following question: '{question}', determine which section of the resume is most relevant. 
         Respond with exactly one of the following options:
@@ -268,12 +290,17 @@ class GPTAnswerer:
         Provide only the exact name of the section from the list above with no additional text.
         """
         prompt = ChatPromptTemplate.from_template(section_prompt)
-        chain = prompt | self.llm_cheap | StrOutputParser()
-        output = chain.invoke({"question": question})
+        chain = prompt | self.llm_model | StrOutputParser()
+        output = chain.invoke({
+            "question": question
+        })
         section_name = output.lower().replace(" ", "_")
         if section_name == "cover_letter":
             chain = chains.get(section_name)
-            output = chain.invoke({"resume": self.resume, "job_description": self.job_description})
+            output = chain.invoke({
+                "resume": self.resume,
+                "job_description": self.job_description
+                })
             return output
         resume_section = getattr(self.resume, section_name, None) or getattr(self.job_application_profile, section_name, None)
         if resume_section is None:
@@ -281,13 +308,24 @@ class GPTAnswerer:
         chain = chains.get(section_name)
         if chain is None:
             raise ValueError(f"Chain not defined for section '{section_name}'")
-        return chain.invoke({"resume_section": resume_section, "question": question})
+        logger.debug(f"Generating text answer via LLM: {llm_model_name} for question: \"{question}\"")
+        return chain.invoke({
+            "resume_section": resume_section,
+            "additional_info": self.additional_info_data,
+            "question": question
+        })
 
     def answer_question_numeric(self, question: str, default_experience: int = 3) -> int:
         func_template = self._preprocess_template_string(strings.numeric_question_template)
         prompt = ChatPromptTemplate.from_template(func_template)
-        chain = prompt | self.llm_cheap | StrOutputParser()
-        output_str = chain.invoke({"resume_educations": self.resume.education_details,"resume_jobs": self.resume.experience_details,"resume_projects": self.resume.projects , "question": question})
+        chain = prompt | self.llm_model | StrOutputParser()
+        logger.debug(f"Generating numeric answer via LLM: {llm_model_name} for question: \"{question}\"")
+        output_str = chain.invoke({
+            "resume_educations": self.resume.education_details,
+            "resume_jobs": self.resume.experience_details,
+            "resume_projects": self.resume.projects,
+            "additional_info": self.additional_info_data,
+            "question": question})
         try:
             output = self.extract_number_from_string(output_str)
         except ValueError:
@@ -304,8 +342,14 @@ class GPTAnswerer:
     def answer_question_from_options(self, question: str, options: list[str]) -> str:
         func_template = self._preprocess_template_string(strings.options_template)
         prompt = ChatPromptTemplate.from_template(func_template)
-        chain = prompt | self.llm_cheap | StrOutputParser()
-        output_str = chain.invoke({"resume": self.resume, "question": question, "options": options})
+        chain = prompt | self.llm_model | StrOutputParser()
+        # logger.debug(f"-------> Additional info data: {self.additional_info_data}")
+        output_str = chain.invoke({
+            "resume": self.resume,
+            "question": question,
+            "options": options,
+            "additional_info": self.additional_info_data
+        })
         best_option = self.find_best_match(output_str, options)
         return best_option
     
@@ -317,7 +361,7 @@ class GPTAnswerer:
         phrase: {phrase}
         """
         prompt = ChatPromptTemplate.from_template(prompt_template)
-        chain = prompt | self.llm_cheap | StrOutputParser()
+        chain = prompt | self.llm_model | StrOutputParser()
         response = chain.invoke({"phrase": phrase})
         if "resume" in response:
             return "resume"
