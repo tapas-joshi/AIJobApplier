@@ -10,7 +10,7 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import WebDriverException, TimeoutException
 from lib_resume_builder_AIHawk import Resume,StyleManager,FacadeManager,ResumeGenerator
-from src.utils import chromeBrowserOptions
+from src.utils import chromeBrowserOptions, setup_loguru_logger
 from src.llm_manager import GPTAnswerer
 from src.linkedIn_authenticator import LinkedInAuthenticator
 from src.linkedIn_bot_facade import LinkedInBotFacade
@@ -18,6 +18,7 @@ from src.linkedIn_job_manager import LinkedInJobManager
 from src.job_application_profile import JobApplicationProfile
 from loguru import logger
 from src.utils import remove_duplicates_from_answers_json_file
+from langchain_ollama.llms import OllamaLLM
 
 # Suppress stderr
 sys.stderr = open(os.devnull, 'w')
@@ -201,6 +202,9 @@ def create_and_run_bot(email: str, password: str, parameters: dict, openai_api_k
 @click.option('--resume', type=click.Path(exists=True, file_okay=True, dir_okay=False, path_type=Path), help="Path to the resume PDF file")
 def main(resume: Path = None):
     try:
+
+        # Set up Loguru logger
+        setup_loguru_logger()
 
         # Remove duplicates from answers.json if present
         remove_duplicates_from_answers_json_file(Path("answers.json"))

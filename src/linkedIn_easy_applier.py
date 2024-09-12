@@ -10,7 +10,8 @@ from datetime import date
 from typing import List, Optional, Any, Tuple
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException, \
+    InvalidArgumentException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webelement import WebElement
@@ -47,9 +48,9 @@ class LinkedInEasyApplier:
             except FileNotFoundError:
                 data = []
             return data
-        except Exception:
+        except Exception as e:
             tb_str = traceback.format_exc()
-            logger.error(f"Error loading questions data from JSON file: \nTraceback:\n{tb_str}")
+            logger.error(f"Error loading questions data from JSON file: \nTraceback:\n{e}")
             raise Exception(f"Error loading questions data from JSON file: \nTraceback:\n{tb_str}")
 
 
@@ -65,10 +66,10 @@ class LinkedInEasyApplier:
             actions.move_to_element(easy_apply_button).click().perform()
             self.gpt_answerer.set_job(job)
             self._fill_application_form(job)
-        except Exception:
+        except Exception as e:
             tb_str = traceback.format_exc()
             self._discard_application()
-            logger.error(f"Failed to apply to job! Original exception: \nTraceback:\n{tb_str}")
+            logger.error(f"Failed to apply to job! Original exception: \nTraceback:\n{e}")
             raise Exception(f"Failed to apply to job! Original exception: \nTraceback:\n{tb_str}")
 
     def _find_easy_apply_button(self) -> WebElement:
@@ -94,25 +95,24 @@ class LinkedInEasyApplier:
                 self.driver.refresh()
                 time.sleep(3)  
             attempt += 1
+        logger.error("No clickable 'Easy Apply' button found")
         raise Exception("No clickable 'Easy Apply' button found")
-    
 
     def _get_job_description(self) -> str:
         try:
-            see_more_button = self.driver.find_element(By.XPATH, '//button[@aria-label="Click to see more description"]')
+            see_more_button = self.driver.find_element(By.XPATH,
+                                                       '//button[@aria-label="Click to see more description"]')
             actions = ActionChains(self.driver)
             actions.move_to_element(see_more_button).click().perform()
             time.sleep(2)
             description = self.driver.find_element(By.CLASS_NAME, 'jobs-description-content__text').text
             return description
-        except NoSuchElementException:
-            tb_str = traceback.format_exc()
-            logger.error(f"Job description 'See more' button not found: \nTraceback:\n{tb_str}")
-            raise Exception("Job description 'See more' button not found: \nTraceback:\n{tb_str}")
-        except Exception:
-            tb_str = traceback.format_exc()
-            logger.error(f"Error getting Job description: \nTraceback:\n{tb_str}")
-            raise Exception(f"Error getting Job description: \nTraceback:\n{tb_str}")
+        except NoSuchElementException as e:
+            logger.error(f"Job description 'See more' button not found: {type(e).__name__}: {e}")
+            raise Exception(f"Job description 'See more' button not found: {type(e).__name__}: {e}")
+        except Exception as e:
+            logger.error(f"Error getting Job description: {type(e).__name__}: {e}")
+            raise Exception(f"Error getting Job description: {type(e).__name__}: {e}")
 
 
     def _get_job_recruiter(self):
@@ -154,6 +154,7 @@ class LinkedInEasyApplier:
             self._check_for_errors()
         except Exception as e:
             logger.error(f"Failed to submit application. {str(e)}")
+            raise Exception(f"Failed to submit application. {str(e)}")
 
     def _unfollow_company(self) -> None:
         try:
@@ -179,10 +180,29 @@ class LinkedInEasyApplier:
             pass
 
     def fill_up(self, job) -> None:
-        easy_apply_content = self.driver.find_element(By.CLASS_NAME, 'jobs-easy-apply-content')
-        pb4_elements = easy_apply_content.find_elements(By.CLASS_NAME, 'pb4')
+        try:
+            easy_apply_content = self.driver.find_element(By.CLASS_NAME, 'jobs-easy-apply-content')
+        except NoSuchElementException as e:
+            logger.error(f"Unable to find the 'jobs-easy-apply-content' element. Error: {e}")
+            return
+        except WebDriverException as e:
+            logger.error(f"WebDriver encountered an error while finding 'jobs-easy-apply-content'. Error: {e}")
+            return
+
+        try:
+            pb4_elements = easy_apply_content.find_elements(By.CLASS_NAME, 'pb4')
+        except NoSuchElementException as e:
+            logger.error(f"Unable to find elements with class 'pb4' inside 'jobs-easy-apply-content'. Error: {e}")
+            return
+        except WebDriverException as e:
+            logger.error(f"WebDriver encountered an error while finding elements with class 'pb4'. Error: {e}")
+            return
+
         for element in pb4_elements:
-            self._process_form_element(element, job)
+            try:
+                self._process_form_element(element, job)
+            except Exception as e:
+                logger.error(f"An error occurred while processing form element: {e}")
         
     def _process_form_element(self, element: WebElement, job) -> None:
         if self._is_upload_field(element):
@@ -194,18 +214,53 @@ class LinkedInEasyApplier:
         return bool(element.find_elements(By.XPATH, ".//input[@type='file']"))
 
     def _handle_upload_fields(self, element: WebElement, job) -> None:
-        file_upload_elements = self.driver.find_elements(By.XPATH, "//input[@type='file']")
+        try:
+            file_upload_elements = self.driver.find_elements(By.XPATH, "//input[@type='file']")
+        except NoSuchElementException as e:
+            logger.error(f"Unable to find file upload elements. Error: {e}")
+            return
+        except WebDriverException as e:
+            logger.error(f"WebDriver encountered an error while finding file upload elements. Error: {e}")
+            return
+
         for element in file_upload_elements:
-            parent = element.find_element(By.XPATH, "..")
-            self.driver.execute_script("arguments[0].classList.remove('hidden')", element)
-            output = self.gpt_answerer.resume_or_cover(parent.text.lower())
+            try:
+                parent = element.find_element(By.XPATH, "..")
+            except NoSuchElementException as e:
+                logger.error(f"Unable to find parent element for file upload field. Error: {e}")
+                continue
+            except WebDriverException as e:
+                logger.error(f"WebDriver encountered an error while finding parent element. Error: {e}")
+                continue
+
+            try:
+                self.driver.execute_script("arguments[0].classList.remove('hidden')", element)
+            except WebDriverException as e:
+                logger.error(f"Error executing JavaScript to unhide file upload field. Error: {e}")
+                continue
+
+            try:
+                output = self.gpt_answerer.resume_or_cover(parent.text.lower())
+            except Exception as e:
+                logger.error(f"Error determining whether to upload resume or cover letter. Error: {e}")
+                continue
+
             if 'resume' in output:
-                if self.resume_path is not None and self.resume_path.resolve().is_file():
-                    element.send_keys(str(self.resume_path.resolve()))
-                else:
-                    self._create_and_upload_resume(element, job)
+                try:
+                    if self.resume_path is not None and self.resume_path.resolve().is_file():
+                        element.send_keys(str(self.resume_path.resolve()))
+                    else:
+                        self._create_and_upload_resume(element, job)
+                except InvalidArgumentException as e:
+                    logger.error(f"Invalid file path provided for resume upload. Error: {e}")
+                except Exception as e:
+                    logger.error(f"Error during resume upload process. Error: {e}")
+
             elif 'cover' in output:
-                self._create_and_upload_cover_letter(element)
+                try:
+                    self._create_and_upload_cover_letter(element)
+                except Exception as e:
+                    logger.error(f"Error during cover letter upload process. Error: {e}")
 
     def _create_and_upload_resume(self, element, job):
         folder_path = 'generated_cv'
@@ -222,8 +277,9 @@ class LinkedInEasyApplier:
             element.send_keys(os.path.abspath(file_path_pdf))
             job.pdf_path = os.path.abspath(file_path_pdf)
             time.sleep(2)
-        except Exception:
+        except Exception as e:
             tb_str = traceback.format_exc()
+            logger.error(f"Upload failed: \nTraceback:\n{e}")
             raise Exception(f"Upload failed: \nTraceback:\n{tb_str}")
 
     def _create_and_upload_cover_letter(self, element: WebElement) -> None:
@@ -451,9 +507,9 @@ class LinkedInEasyApplier:
                 logger.debug(f"Saving question data to JSON file: {question_data}")
                 with open(output_file, 'w') as f:
                     json.dump(data, f, indent=4)
-            except Exception:
+            except Exception as e:
                 tb_str = traceback.format_exc()
-                logger.error(f"Error saving questions data to JSON file: \nTraceback:\n{tb_str}")
+                logger.error(f"Error saving questions data to JSON file: \nTraceback:\n{e}")
                 raise Exception(f"Error saving questions data to JSON file: \nTraceback:\n{tb_str}")
 
 

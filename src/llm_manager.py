@@ -308,18 +308,21 @@ class GPTAnswerer:
         chain = chains.get(section_name)
         if chain is None:
             raise ValueError(f"Chain not defined for section '{section_name}'")
-        logger.debug(f"Generating text answer via LLM: {llm_model_name} for question: \"{question}\"")
-        return chain.invoke({
+        # logger.debug(f"Generating text answer via LLM: {llm_model_name} for question: \"{question}\"")
+        output = chain.invoke({
             "resume_section": resume_section,
             "additional_info": self.additional_info_data,
             "question": question
         })
+        logger.debug(
+            f"Generating textual answer via LLM: {llm_model_name} for question: \"{question}\" Answer: \"{output}\"")
+        return output
 
     def answer_question_numeric(self, question: str, default_experience: int = 3) -> int:
         func_template = self._preprocess_template_string(strings.numeric_question_template)
         prompt = ChatPromptTemplate.from_template(func_template)
         chain = prompt | self.llm_model | StrOutputParser()
-        logger.debug(f"Generating numeric answer via LLM: {llm_model_name} for question: \"{question}\"")
+        # logger.debug(f"Generating numeric answer via LLM: {llm_model_name} for question: \"{question}\"")
         output_str = chain.invoke({
             "resume_educations": self.resume.education_details,
             "resume_jobs": self.resume.experience_details,
@@ -328,8 +331,12 @@ class GPTAnswerer:
             "question": question})
         try:
             output = self.extract_number_from_string(output_str)
+            logger.debug(f"Generating numeric answer via LLM: {llm_model_name} for question: \"{question}\" Answer: \"{output}\"")
+            # return output
         except ValueError:
             output = default_experience
+            logger.debug(f"Generating numeric answer via LLM: {llm_model_name} for question: \"{question}\" Answer: \"{output}\"")
+            # return output
         return output
 
     def extract_number_from_string(self, output_str):

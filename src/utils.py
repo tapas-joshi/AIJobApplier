@@ -1,5 +1,6 @@
 import os
 import random
+import sys
 import time
 import json
 from loguru import logger
@@ -48,6 +49,9 @@ def remove_duplicates_from_answers_json_file(file_path):
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
 
+def setup_loguru_logger():
+    # Remove the default logger configuration
+    sys.tracebacklimit = 0
 
 def ensure_chrome_profile():
     profile_dir = os.path.dirname(chromeProfilePath)

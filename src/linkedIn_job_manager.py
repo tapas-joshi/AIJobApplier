@@ -124,8 +124,8 @@ class LinkedInJobManager:
             pass
 
         job_results = self.driver.find_element(By.CLASS_NAME, "jobs-search-results-list")
-        utils.scroll_slow(self.driver, job_results, step=random.randint(200,400))
-        utils.scroll_slow(self.driver, job_results, step=random.randint(200,400), reverse=True)
+        utils.scroll_slow(self.driver, job_results, step=random.randint(300,600))
+        utils.scroll_slow(self.driver, job_results, step=random.randint(300,600), reverse=True)
         job_list_elements = self.driver.find_elements(By.CLASS_NAME, 'scaffold-layout__list-container')[
             0].find_elements(By.CLASS_NAME, 'jobs-search-results__list-item')
         if not job_list_elements:
